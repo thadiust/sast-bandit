@@ -1,1 +1,1 @@
-# sast-bandit-
+# sast-bandit
