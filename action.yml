@@ -1,0 +1,274 @@
+name: "Bandit SAST scan"
+description: "Run Bandit static analysis on Python source"
+
+outputs:
+  issue_count:
+    description: "Number of findings reported by Bandit"
+    value: ${{ steps.bandit.outputs.issue_count }}
+  scan_status:
+    description: "Final scan status (clean, findings_found, scanner_error)"
+    value: ${{ steps.bandit.outputs.scan_status }}
+
+inputs:
+  python_version:
+    description: "Python version to use"
+    required: false
+    default: "3.11"
+
+  bandit_version:
+    description: "Exact bandit version to install"
+    required: false
+    default: "1.9.4"
+
+  working_directory:
+    description: "Directory to run the scan from (repo root relative)"
+    required: false
+    default: "."
+
+  targets:
+    description: "Space-separated paths to scan (relative to working_directory), passed to bandit -r"
+    required: false
+    default: "."
+
+  bandit_config:
+    description: "Optional path to bandit config file (relative to working_directory)"
+    required: false
+    default: ""
+
+  exclude:
+    description: "Optional comma-separated paths to exclude (Bandit --exclude)"
+    required: false
+    default: ""
+
+  minimum_severity:
+    description: "Minimum issue severity to report (all, low, medium, high)"
+    required: false
+    default: "all"
+
+  minimum_confidence:
+    description: "Minimum confidence to report (all, low, medium, high)"
+    required: false
+    default: "all"
+
+  report_format:
+    description: "Human-readable report format when not using JSON-only output (txt, json, yaml, csv)"
+    required: false
+    default: "txt"
+
+  report_file:
+    description: "Optional path to write the human-readable report (relative to working_directory)"
+    required: false
+    default: ""
+
+  fail_on_findings:
+    description: "Fail the action when Bandit reports one or more findings"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Install Bandit
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        set -euo pipefail
+        python -m pip install --upgrade pip
+        python -m pip install "bandit==${{ inputs.bandit_version }}"
+
+    - name: Validate inputs
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        set -euo pipefail
+
+        case "${{ inputs.fail_on_findings }}" in
+          true|false) ;;
+          *)
+            echo "Unsupported fail_on_findings value: ${{ inputs.fail_on_findings }}. Use true or false." >&2
+            exit 1
+            ;;
+        esac
+
+        case "${{ inputs.minimum_severity }}" in
+          all|low|medium|high) ;;
+          *)
+            echo "Unsupported minimum_severity: ${{ inputs.minimum_severity }}. Use all, low, medium, or high." >&2
+            exit 1
+            ;;
+        esac
+
+        case "${{ inputs.minimum_confidence }}" in
+          all|low|medium|high) ;;
+          *)
+            echo "Unsupported minimum_confidence: ${{ inputs.minimum_confidence }}. Use all, low, medium, or high." >&2
+            exit 1
+            ;;
+        esac
+
+        case "${{ inputs.report_format }}" in
+          txt|json|yaml|csv) ;;
+          *)
+            echo "Unsupported report_format: ${{ inputs.report_format }}." >&2
+            exit 1
+            ;;
+        esac
+
+        if [ -n "${{ inputs.bandit_config }}" ] && [ ! -f "${{ inputs.bandit_config }}" ]; then
+          echo "Bandit config not found: ${{ inputs.bandit_config }}" >&2
+          exit 1
+        fi
+
+        read -r -a TARGETS <<< "${{ inputs.targets }}"
+        if [ "${#TARGETS[@]}" -eq 0 ]; then
+          echo "targets must contain at least one path." >&2
+          exit 1
+        fi
+        for t in "${TARGETS[@]}"; do
+          if [ ! -e "$t" ]; then
+            echo "Scan target does not exist: $t" >&2
+            exit 1
+          fi
+        done
+
+    - name: Run Bandit
+      id: bandit
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        set -euo pipefail
+
+        json_report="$(mktemp)"
+        rendered_report=""
+
+        cleanup() {
+          rm -f "$json_report"
+          if [ -n "$rendered_report" ]; then
+            rm -f "$rendered_report"
+          fi
+        }
+        trap cleanup EXIT
+
+        read -r -a TARGETS <<< "${{ inputs.targets }}"
+
+        BANDIT_ARGS=( -q -f json -o "$json_report" )
+
+        case "${{ inputs.minimum_severity }}" in
+          low) BANDIT_ARGS+=( -l ) ;;
+          medium) BANDIT_ARGS+=( -ll ) ;;
+          high) BANDIT_ARGS+=( -lll ) ;;
+        esac
+
+        case "${{ inputs.minimum_confidence }}" in
+          low) BANDIT_ARGS+=( -i ) ;;
+          medium) BANDIT_ARGS+=( -ii ) ;;
+          high) BANDIT_ARGS+=( -iii ) ;;
+        esac
+
+        if [ -n "${{ inputs.bandit_config }}" ]; then
+          BANDIT_ARGS+=( -c "${{ inputs.bandit_config }}" )
+        fi
+
+        if [ -n "${{ inputs.exclude }}" ]; then
+          BANDIT_ARGS+=( --exclude "${{ inputs.exclude }}" )
+        fi
+
+        BANDIT_ARGS+=( -r "${TARGETS[@]}" )
+
+        set +e
+        python -m bandit "${BANDIT_ARGS[@]}"
+        bandit_exit_code=$?
+        set -e
+
+        if [ ! -s "$json_report" ]; then
+          echo "Bandit scanner error: no JSON report was produced (exit code: ${bandit_exit_code})." >&2
+          echo "This indicates the scan did not complete successfully, not that issues were found." >&2
+          echo "issue_count=0" >> "$GITHUB_OUTPUT"
+          echo "scan_status=scanner_error" >> "$GITHUB_OUTPUT"
+          exit "${bandit_exit_code:-1}"
+        fi
+
+        if ! issue_count="$(python -c "import json,sys; p=sys.argv[1]; d=json.load(open(p,encoding='utf-8')); print(len(d.get('results')or[]))" "$json_report" 2>/dev/null)"; then
+          echo "Bandit scanner error: JSON report could not be parsed." >&2
+          echo "This indicates a tool or environment problem, not a count of security findings." >&2
+          echo "issue_count=0" >> "$GITHUB_OUTPUT"
+          echo "scan_status=scanner_error" >> "$GITHUB_OUTPUT"
+          exit "${bandit_exit_code:-1}"
+        fi
+
+        if [ "$issue_count" -gt 0 ]; then
+          scan_status="findings_found"
+        elif [ "$bandit_exit_code" -eq 0 ]; then
+          scan_status="clean"
+        else
+          scan_status="scanner_error"
+        fi
+
+        echo "issue_count=$issue_count" >> "$GITHUB_OUTPUT"
+        echo "scan_status=$scan_status" >> "$GITHUB_OUTPUT"
+
+        if [ "${{ inputs.report_format }}" = "json" ]; then
+          if [ -n "${{ inputs.report_file }}" ]; then
+            cp "$json_report" "${{ inputs.report_file }}"
+          else
+            cat "$json_report"
+          fi
+        else
+          rendered_report="$(mktemp)"
+          RENDER_ARGS=( -q -f "${{ inputs.report_format }}" -o "$rendered_report" )
+          case "${{ inputs.minimum_severity }}" in
+            low) RENDER_ARGS+=( -l ) ;;
+            medium) RENDER_ARGS+=( -ll ) ;;
+            high) RENDER_ARGS+=( -lll ) ;;
+          esac
+          case "${{ inputs.minimum_confidence }}" in
+            low) RENDER_ARGS+=( -i ) ;;
+            medium) RENDER_ARGS+=( -ii ) ;;
+            high) RENDER_ARGS+=( -iii ) ;;
+          esac
+          if [ -n "${{ inputs.bandit_config }}" ]; then
+            RENDER_ARGS+=( -c "${{ inputs.bandit_config }}" )
+          fi
+          if [ -n "${{ inputs.exclude }}" ]; then
+            RENDER_ARGS+=( --exclude "${{ inputs.exclude }}" )
+          fi
+          RENDER_ARGS+=( -r "${TARGETS[@]}" )
+
+          set +e
+          python -m bandit "${RENDER_ARGS[@]}"
+          rendered_exit_code=$?
+          set -e
+
+          if [ ! -s "$rendered_report" ]; then
+            echo "Bandit scanner error: failed to generate ${{ inputs.report_format }} report (exit code: ${rendered_exit_code})." >&2
+            exit "${rendered_exit_code:-1}"
+          fi
+
+          if [ -n "${{ inputs.report_file }}" ]; then
+            cp "$rendered_report" "${{ inputs.report_file }}"
+          else
+            cat "$rendered_report"
+          fi
+        fi
+
+        if [ "$scan_status" = "scanner_error" ]; then
+          echo "Bandit scanner error: the tool exited with code ${bandit_exit_code} with no parseable findings summary." >&2
+          echo "Fix Bandit configuration, paths, or environment; this is not the same as \"findings were detected\"." >&2
+          exit "${bandit_exit_code:-1}"
+        fi
+
+        if [ "$issue_count" -gt 0 ]; then
+          echo "Bandit found ${issue_count} issue(s). See the report above for details." >&2
+          if [ "${{ inputs.fail_on_findings }}" = "true" ]; then
+            exit 1
+          fi
+          echo "fail_on_findings=false so the action will continue despite findings." >&2
+          exit 0
+        fi
+
+        echo "No Bandit findings."
