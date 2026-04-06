@@ -8,6 +8,9 @@ outputs:
   scan_status:
     description: "Final scan status (clean, findings_found, scanner_error)"
     value: ${{ steps.bandit.outputs.scan_status }}
+  sarif_path:
+    description: "Repo-relative path to the SARIF report when write_sarif is true (empty otherwise)"
+    value: ${{ steps.bandit.outputs.sarif_path }}
 
 inputs:
   python_version:
@@ -65,6 +68,16 @@ inputs:
     required: false
     default: "true"
 
+  write_sarif:
+    description: "Write a SARIF report to sarif_filename (for GitHub Code Scanning upload; second Bandit pass)"
+    required: false
+    default: "false"
+
+  sarif_filename:
+    description: "SARIF file path relative to working_directory (used when write_sarif is true)"
+    required: false
+    default: "bandit-results.sarif"
+
 runs:
   using: "composite"
   steps:
@@ -78,6 +91,14 @@ runs:
           true|false) ;;
           *)
             echo "Unsupported fail_on_findings value: ${{ inputs.fail_on_findings }}. Use true or false." >&2
+            exit 1
+            ;;
+        esac
+
+        case "${{ inputs.write_sarif }}" in
+          true|false) ;;
+          *)
+            echo "Unsupported write_sarif: ${{ inputs.write_sarif }}. Use true or false." >&2
             exit 1
             ;;
         esac
@@ -179,6 +200,25 @@ runs:
 
         BANDIT_ARGS+=( -r "${TARGETS[@]}" )
 
+        SARIF_ARGS=( -q -f sarif -o "${{ inputs.sarif_filename }}" )
+        case "${{ inputs.minimum_severity }}" in
+          low) SARIF_ARGS+=( -l ) ;;
+          medium) SARIF_ARGS+=( -ll ) ;;
+          high) SARIF_ARGS+=( -lll ) ;;
+        esac
+        case "${{ inputs.minimum_confidence }}" in
+          low) SARIF_ARGS+=( -i ) ;;
+          medium) SARIF_ARGS+=( -ii ) ;;
+          high) SARIF_ARGS+=( -iii ) ;;
+        esac
+        if [ -n "${{ inputs.bandit_config }}" ]; then
+          SARIF_ARGS+=( -c "${{ inputs.bandit_config }}" )
+        fi
+        if [ -n "${{ inputs.exclude }}" ]; then
+          SARIF_ARGS+=( --exclude "${{ inputs.exclude }}" )
+        fi
+        SARIF_ARGS+=( -r "${TARGETS[@]}" )
+
         set +e
         python -m bandit "${BANDIT_ARGS[@]}"
         bandit_exit_code=$?
@@ -189,6 +229,7 @@ runs:
           echo "This indicates the scan did not complete successfully, not that issues were found." >&2
           echo "issue_count=0" >> "$GITHUB_OUTPUT"
           echo "scan_status=scanner_error" >> "$GITHUB_OUTPUT"
+          echo "sarif_path=" >> "$GITHUB_OUTPUT"
           exit "${bandit_exit_code:-1}"
         fi
 
@@ -197,6 +238,7 @@ runs:
           echo "This indicates a tool or environment problem, not a count of security findings." >&2
           echo "issue_count=0" >> "$GITHUB_OUTPUT"
           echo "scan_status=scanner_error" >> "$GITHUB_OUTPUT"
+          echo "sarif_path=" >> "$GITHUB_OUTPUT"
           exit "${bandit_exit_code:-1}"
         fi
 
@@ -210,6 +252,33 @@ runs:
 
         echo "issue_count=$issue_count" >> "$GITHUB_OUTPUT"
         echo "scan_status=$scan_status" >> "$GITHUB_OUTPUT"
+
+        if [ "$scan_status" = "scanner_error" ]; then
+          echo "sarif_path=" >> "$GITHUB_OUTPUT"
+          echo "Bandit scanner error: the tool exited with code ${bandit_exit_code} with no parseable findings summary." >&2
+          echo "Fix Bandit configuration, paths, or environment; this is not the same as \"findings were detected\"." >&2
+          exit "${bandit_exit_code:-1}"
+        fi
+
+        if [ "${{ inputs.write_sarif }}" = "true" ]; then
+          set +e
+          python -m bandit "${SARIF_ARGS[@]}"
+          _sarif_ec=$?
+          set -e
+          if [ ! -f "${{ inputs.sarif_filename }}" ] || [ ! -s "${{ inputs.sarif_filename }}" ]; then
+            echo "Bandit SARIF pass failed or produced an empty file (exit ${_sarif_ec})." >&2
+            echo "sarif_path=" >> "$GITHUB_OUTPUT"
+          else
+            WD="${{ inputs.working_directory }}"
+            if [ "$WD" = "." ]; then
+              echo "sarif_path=${{ inputs.sarif_filename }}" >> "$GITHUB_OUTPUT"
+            else
+              echo "sarif_path=${{ inputs.working_directory }}/${{ inputs.sarif_filename }}" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+        else
+          echo "sarif_path=" >> "$GITHUB_OUTPUT"
+        fi
 
         if [ "${{ inputs.report_format }}" = "json" ]; then
           if [ -n "${{ inputs.report_file }}" ]; then
@@ -258,12 +327,6 @@ runs:
           else
             cat "$rendered_report"
           fi
-        fi
-
-        if [ "$scan_status" = "scanner_error" ]; then
-          echo "Bandit scanner error: the tool exited with code ${bandit_exit_code} with no parseable findings summary." >&2
-          echo "Fix Bandit configuration, paths, or environment; this is not the same as \"findings were detected\"." >&2
-          exit "${bandit_exit_code:-1}"
         fi
 
         if [ "$issue_count" -gt 0 ]; then

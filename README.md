@@ -49,6 +49,8 @@ Higher minimums **filter out** lower-severity or lower-confidence issues from bo
 | `report_format` | `txt` | Human-oriented format when not using JSON-only output: **`txt`**, **`json`**, **`yaml`**, or **`csv`**. |
 | `report_file` | *(empty)* | If set, copy the report to this path relative to **`working_directory`**. |
 | `fail_on_findings` | `true` | If **`true`**, exit **1** when **`issue_count > 0`**. |
+| `write_sarif` | `false` | If **`true`**, run a second **Bandit** pass and write **SARIF** to **`sarif_filename`** (for **`github/codeql-action/upload-sarif`**). |
+| `sarif_filename` | `bandit-results.sarif` | Path relative to **`working_directory`** when **`write_sarif`** is **`true`**. |
 
 ## Outputs
 
@@ -56,6 +58,7 @@ Higher minimums **filter out** lower-severity or lower-confidence issues from bo
 |--------|-------------|
 | `issue_count` | Number of Bandit results after severity/confidence/config filters. |
 | `scan_status` | `clean`, `findings_found`, or `scanner_error`. |
+| `sarif_path` | Repo-relative path to the SARIF file when **`write_sarif`** is **`true`**; empty otherwise. |
 
 ## Example
 
