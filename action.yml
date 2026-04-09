@@ -83,9 +83,27 @@ runs:
   steps:
     - name: Validate inputs
       shell: bash
-      working-directory: ${{ inputs.working_directory }}
       run: |
         set -euo pipefail
+        WD="${{ inputs.working_directory }}"
+        if [ -z "$WD" ]; then
+          echo "working_directory must be a non-empty relative path." >&2
+          exit 1
+        fi
+        case "$WD" in
+          /*)
+            echo "working_directory must be relative (no leading slash): $WD" >&2
+            exit 1
+            ;;
+        esac
+        if [[ "$WD" =~ (^|/)\.\.(/|$) ]]; then
+          echo "working_directory must not traverse parents (..): $WD" >&2
+          exit 1
+        fi
+        if [ ! -d "$GITHUB_WORKSPACE/$WD" ]; then
+          echo "working_directory not found or not a directory: $WD" >&2
+          exit 1
+        fi
 
         case "${{ inputs.fail_on_findings }}" in
           true|false) ;;
@@ -132,17 +150,94 @@ runs:
           exit 1
         fi
 
+        BANDIT_CONFIG="${{ inputs.bandit_config }}"
+        if [ -n "$BANDIT_CONFIG" ]; then
+          case "$BANDIT_CONFIG" in
+            /*)
+              echo "bandit_config must be relative (no leading slash): $BANDIT_CONFIG" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$BANDIT_CONFIG" =~ (^|/)\.\.(/|$) ]]; then
+            echo "bandit_config must not traverse parents (..): $BANDIT_CONFIG" >&2
+            exit 1
+          fi
+          if [ ! -f "$GITHUB_WORKSPACE/$WD/$BANDIT_CONFIG" ]; then
+            echo "Bandit config not found: $WD/$BANDIT_CONFIG" >&2
+            exit 1
+          fi
+        fi
+
+        REPORT_FILE="${{ inputs.report_file }}"
+        if [ -n "$REPORT_FILE" ]; then
+          case "$REPORT_FILE" in
+            /*)
+              echo "report_file must be relative (no leading slash): $REPORT_FILE" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$REPORT_FILE" =~ (^|/)\.\.(/|$) ]]; then
+            echo "report_file must not traverse parents (..): $REPORT_FILE" >&2
+            exit 1
+          fi
+        fi
+
+        SARIF_NAME="${{ inputs.sarif_filename }}"
+        if [ -z "$SARIF_NAME" ]; then
+          echo "sarif_filename must be non-empty (use write_sarif=false to skip SARIF)." >&2
+          exit 1
+        fi
+        case "$SARIF_NAME" in
+          /*)
+            echo "sarif_filename must be relative (no leading slash): $SARIF_NAME" >&2
+            exit 1
+            ;;
+        esac
+        if [[ "$SARIF_NAME" =~ (^|/)\.\.(/|$) ]]; then
+          echo "sarif_filename must not traverse parents (..): $SARIF_NAME" >&2
+          exit 1
+        fi
+
         read -r -a TARGETS <<< "${{ inputs.targets }}"
         if [ "${#TARGETS[@]}" -eq 0 ]; then
           echo "targets must contain at least one path." >&2
           exit 1
         fi
         for t in "${TARGETS[@]}"; do
+          case "$t" in
+            /*)
+              echo "Scan targets must be relative (no leading slash): $t" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$t" =~ (^|/)\.\.(/|$) ]]; then
+            echo "Scan targets must not traverse parents (..): $t" >&2
+            exit 1
+          fi
           if [ ! -e "$t" ]; then
             echo "Scan target does not exist: $t" >&2
             exit 1
           fi
         done
+
+        EXCLUDE="${{ inputs.exclude }}"
+        if [ -n "$EXCLUDE" ]; then
+          # Bandit expects comma-separated paths. Validate each segment.
+          IFS=',' read -r -a EXCLUDES <<< "$EXCLUDE"
+          for e in "${EXCLUDES[@]}"; do
+            [ -z "$e" ] && continue
+            case "$e" in
+              /*)
+                echo "exclude paths must be relative (no leading slash): $e" >&2
+                exit 1
+                ;;
+            esac
+            if [[ "$e" =~ (^|/)\.\.(/|$) ]]; then
+              echo "exclude paths must not traverse parents (..): $e" >&2
+              exit 1
+            fi
+          done
+        fi
 
     - name: Setup Python
       uses: actions/setup-python@v6
