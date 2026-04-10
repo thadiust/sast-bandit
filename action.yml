@@ -145,11 +145,6 @@ runs:
             ;;
         esac
 
-        if [ -n "${{ inputs.bandit_config }}" ] && [ ! -f "${{ inputs.bandit_config }}" ]; then
-          echo "Bandit config not found: ${{ inputs.bandit_config }}" >&2
-          exit 1
-        fi
-
         BANDIT_CONFIG="${{ inputs.bandit_config }}"
         if [ -n "$BANDIT_CONFIG" ]; then
           case "$BANDIT_CONFIG" in
