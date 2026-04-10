@@ -209,8 +209,8 @@ runs:
             echo "Scan targets must not traverse parents (..): $t" >&2
             exit 1
           fi
-          if [ ! -e "$t" ]; then
-            echo "Scan target does not exist: $t" >&2
+          if [ ! -e "$GITHUB_WORKSPACE/$WD/$t" ]; then
+            echo "Scan target does not exist: $WD/$t" >&2
             exit 1
           fi
         done
@@ -255,6 +255,13 @@ runs:
 
         json_report="$(mktemp)"
         rendered_report=""
+
+        if [[ "${{ inputs.sarif_filename }}" == */* ]]; then
+          mkdir -p "$(dirname -- "${{ inputs.sarif_filename }}")"
+        fi
+        if [ -n "${{ inputs.report_file }}" ] && [[ "${{ inputs.report_file }}" == */* ]]; then
+          mkdir -p "$(dirname -- "${{ inputs.report_file }}")"
+        fi
 
         cleanup() {
           rm -f "$json_report"
