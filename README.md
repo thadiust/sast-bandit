@@ -69,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: thadiust/sast-bandit@v1.0.1
+      - uses: thadiust/sast-bandit@main
         with:
           working_directory: "."
           targets: "src"
@@ -81,7 +81,7 @@ jobs:
 With a config file and artifact report:
 
 ```yaml
-      - uses: thadiust/sast-bandit@v1.0.1
+      - uses: thadiust/sast-bandit@main
         with:
           targets: "."
           bandit_config: "bandit.yaml"
