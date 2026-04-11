@@ -244,7 +244,8 @@ runs:
       working-directory: ${{ inputs.working_directory }}
       run: |
         set -euo pipefail
-        python -m pip install --disable-pip-version-check -q "bandit==${{ inputs.bandit_version }}"
+        # PyPI "bandit" registers -f sarif only with the [sarif] extra (sarif-om, jschema-to-python).
+        python -m pip install --disable-pip-version-check -q "bandit[sarif]==${{ inputs.bandit_version }}"
 
     - name: Run Bandit
       id: bandit

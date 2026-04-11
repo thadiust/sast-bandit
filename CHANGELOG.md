@@ -4,6 +4,10 @@ All notable changes to **sast-bandit** are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Install **`bandit[sarif]==…`** (PyPI **optional deps**) so **`-f sarif`** is registered; plain **`bandit==…`** does not include the SARIF formatter.
+
 ## [1.0.2] — 2026-04-09
 
 ### Changed

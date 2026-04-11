@@ -20,6 +20,7 @@ The action runs Bandit once with **`-f json`** to compute **`issue_count`**. If 
 - Every path in **`targets`** must exist under **`working_directory`** (validated before the scan).
 - If **`bandit_config`** is set, that file must exist (validated).
 - Pin **`bandit_version`** if you want reproducible CI as Bandit rules change.
+- **`write_sarif: true`:** this action installs **`bandit[sarif]==…`** so **`-f sarif`** is available (plain **`bandit==…`** on PyPI does not register the SARIF formatter).
 
 ## Severity and confidence
 
