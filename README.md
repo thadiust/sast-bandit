@@ -22,6 +22,10 @@ The action runs Bandit once with **`-f json`** to compute **`issue_count`**. If 
 - Pin **`bandit_version`** if you want reproducible CI as Bandit rules change.
 - **`write_sarif: true`:** this action installs **`bandit[sarif]==…`** so **`-f sarif`** is available (plain **`bandit==…`** on PyPI does not register the SARIF formatter).
 
+### Pip hash pinning
+
+For the **default** **`bandit_version`** (**`1.9.4`**), the action installs from **`constraints/bandit-sarif-1.9.4.txt`** with **`pip --require-hashes`**. Other versions log a **`::warning`** and use an unhashed **`pip install`**. After bumping the default in **`action.yml`**, run **`scripts/refresh-pip-constraints.sh`** (optional version argument) and commit the new **`constraints/*.txt`**.
+
 ## Severity and confidence
 
 | Input | Effect (Bandit flags) |

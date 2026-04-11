@@ -4,6 +4,10 @@ All notable changes to **sast-bandit** are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`constraints/bandit-sarif-1.9.4.txt`**: **`pip install --require-hashes`** for the default **`bandit_version`**; other versions log **`::warning`**. **`scripts/refresh-pip-constraints.sh`** regenerates after bumps.
+
 ### Fixed
 
 - Install **`bandit[sarif]==…`** (PyPI **optional deps**) so **`-f sarif`** is registered; plain **`bandit==…`** does not include the SARIF formatter.

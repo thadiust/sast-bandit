@@ -244,8 +244,14 @@ runs:
       working-directory: ${{ inputs.working_directory }}
       run: |
         set -euo pipefail
-        # PyPI "bandit" registers -f sarif only with the [sarif] extra (sarif-om, jschema-to-python).
-        python -m pip install --disable-pip-version-check -q "bandit[sarif]==${{ inputs.bandit_version }}"
+        BV="${{ inputs.bandit_version }}"
+        CF="${GITHUB_ACTION_PATH}/constraints/bandit-sarif-${BV}.txt"
+        if [ -f "$CF" ]; then
+          python -m pip install --disable-pip-version-check -q --require-hashes -r "$CF"
+        else
+          echo "::warning title=Supply chain::No hash constraints for bandit[sarif]==${BV} (expected ${CF}). Using pip without --require-hashes. Run scripts/refresh-pip-constraints.sh after bumping the default version." >&2
+          python -m pip install --disable-pip-version-check -q "bandit[sarif]==${BV}"
+        fi
 
     - name: Run Bandit
       id: bandit
