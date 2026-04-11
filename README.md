@@ -12,6 +12,8 @@ Composite GitHub Action that runs **[Bandit](https://github.com/pycqa/bandit)** 
 
 The action runs Bandit once with **`-f json`** to compute **`issue_count`**. If **`report_format`** is **`json`**, it reuses that file for the log or **`report_file`**; otherwise it runs Bandit again with **`report_format`** (for example **`txt`**) so logs stay readable. With **`-q`**, Bandit may produce an **empty** **`.txt`** file on a clean scan; the action treats that as success when the tool exits **0**.
 
+**`write_sarif: true` (Code Scanning):** Bandit runs **again** with **`-f sarif`** so **`upload-sarif`** gets a proper SARIF document while the **JSON** pass remains the source of **`issue_count`** and fail logic. That is **intentional** but costs roughly **another full Bandit traversal** on large repos; set **`write_sarif: false`** if you only need exit status and human-readable output.
+
 ## Caller responsibilities
 
 - Use a **Linux** runner; **`actions/setup-python`** runs inside the action. Inputs are **validated before** Python/Bandit are installed so bad configuration fails fast without installing packages.
