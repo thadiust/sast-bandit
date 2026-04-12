@@ -6,6 +6,7 @@ All notable changes to **sast-bandit** are documented in this file.
 
 ### Added
 
+- **CI:** **`verify-default-constraints`** job in **`actionlint.yml`** — fails if **`action.yml`** default **`bandit_version`** lacks **`constraints/bandit-sarif-<version>.txt`**.
 - **`constraints/bandit-sarif-1.9.4.txt`**: **`pip install --require-hashes`** for the default **`bandit_version`**; other versions log **`::warning`**. **`scripts/refresh-pip-constraints.sh`** regenerates after bumps.
 
 ### Fixed

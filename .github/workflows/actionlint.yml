@@ -17,3 +17,26 @@ jobs:
     uses: thadiust/workflow-python/.github/workflows/reusable-actionlint.yml@main
     with:
       validate_root_action_yml: true
+
+  verify-default-constraints:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Default bandit_version must have constraints/bandit-sarif-<version>.txt
+        run: |
+          set -euo pipefail
+          python -m pip install -q pyyaml
+          python - <<'PY'
+          import pathlib
+          import yaml
+          with open("action.yml", encoding="utf-8") as f:
+              data = yaml.safe_load(f)
+          v = data["inputs"]["bandit_version"]["default"]
+          p = pathlib.Path("constraints") / f"bandit-sarif-{v}.txt"
+          if not p.is_file():
+              raise SystemExit(f"Missing {p} for default bandit_version={v!r} — run scripts/refresh-pip-constraints.sh")
+          print("OK:", p)
+          PY
