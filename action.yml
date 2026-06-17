@@ -154,10 +154,13 @@ runs:
         reject_shell_metachar() {
           local label="$1"
           local value="$2"
-          if [[ "$value" =~ [$'\n\r'"$;|&`<>()\\'] ]]; then
-            echo "$label contains unsupported shell metacharacters." >&2
-            exit 1
-          fi
+          [ -z "$value" ] && return 0
+          case "$value" in
+            *$'\n'*|*$'\r'*|*\;*|*\|*|*\&*|*$'\x60'*|*\$*|*\"*|*\(*|*\)*|*\<*|*\>*|*\\*)
+              echo "$label contains unsupported shell metacharacters." >&2
+              exit 1
+              ;;
+          esac
         }
 
         reject_shell_metachar "exclude" "${{ inputs.exclude }}"
