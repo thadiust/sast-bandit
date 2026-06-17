@@ -145,6 +145,23 @@ runs:
             ;;
         esac
 
+        BV="${{ inputs.bandit_version }}"
+        if [[ ! "$BV" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+_-]?[0-9A-Za-z-]+)*$ ]]; then
+          echo "bandit_version must be a plain version string (e.g. 1.9.4)." >&2
+          exit 1
+        fi
+
+        reject_shell_metachar() {
+          local label="$1"
+          local value="$2"
+          if [[ "$value" =~ [$'\n\r'"$;|&`<>()\\'] ]]; then
+            echo "$label contains unsupported shell metacharacters." >&2
+            exit 1
+          fi
+        }
+
+        reject_shell_metachar "exclude" "${{ inputs.exclude }}"
+
         BANDIT_CONFIG="${{ inputs.bandit_config }}"
         if [ -n "$BANDIT_CONFIG" ]; then
           case "$BANDIT_CONFIG" in
@@ -372,6 +389,7 @@ runs:
           if [ ! -f "${{ inputs.sarif_filename }}" ] || [ ! -s "${{ inputs.sarif_filename }}" ]; then
             echo "Bandit SARIF pass failed or produced an empty file (exit ${_sarif_ec})." >&2
             echo "sarif_path=" >> "$GITHUB_OUTPUT"
+            exit "${_sarif_ec:-1}"
           else
             WD="${{ inputs.working_directory }}"
             if [ "$WD" = "." ]; then
